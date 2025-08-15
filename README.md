@@ -81,14 +81,56 @@ python PowerTrimGUI.py
 
 ## Keyboard shortcuts
 
-- Open: Ctrl+O
-- Save Project As: Ctrl+S
-- Undo/Redo: Ctrl+Z / Ctrl+Y
-- Mark In/Out: I / O
-- Delete selected segment(s): Delete
-- Previous/Next frame: , / .
-- Play/Pause: Space
-- Quick Snapshot: F12
+### File Operations
+- **Ctrl+O** - Open Video
+- **Ctrl+S** - Save Project
+- **Ctrl+E** - Export Video
+- **Ctrl+Q** - Quit
+
+### Playback Control
+- **Space** - Play/Pause
+- **Left/Right** - Seek 5 seconds
+- **Up/Down** - Seek 1 minute
+- **,** - Previous frame
+- **.** - Next frame
+- **Home** - Jump to start
+- **End** - Jump to end
+- **Ctrl+Left/Right** - Previous/Next boundary
+
+### Segment Management
+- **I** - Mark In Point
+- **O** - Mark Out Point
+- **Delete** - Delete selected segment
+- **M** - Merge selected segments
+- **Enter** - Play selected segment
+- **Ctrl+Enter** - Play all segments
+
+### Timeline Navigation
+- **Ctrl+Plus** - Zoom in
+- **Ctrl+Minus** - Zoom out
+- **Ctrl+0** - Zoom fit
+- **Ctrl+Mouse Wheel** - Zoom timeline
+
+### Snapshots
+- **F12** - Quick snapshot
+- **Ctrl+F12** - Save snapshot as
+
+### Other
+- **F1** - Help & About
+- **F5** - Refresh thumbnails
+- **Ctrl+,** - Settings
+- **Ctrl+Z** - Undo
+- **Ctrl+Y** - Redo
+
+### MPV Default Shortcuts
+The application also supports standard MPV shortcuts:
+- **f** - Toggle fullscreen
+- **m** - Mute
+- **0-9** - Seek to percentage (0% to 90%)
+- **[**/**]** - Decrease/Increase playback speed
+- **z** - Toggle zoom
+- **+**/**-** - Volume up/down
+- And many more standard MPV shortcuts
 
 ---
 

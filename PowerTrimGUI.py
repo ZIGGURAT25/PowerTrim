@@ -738,6 +738,17 @@ class ProTrimmerWindow(QMainWindow):
         self.actions['zoom_out'] = QAction(self.icons['zoom-out-line'], "Zoom Out", self)
         self.actions['zoom_fit'] = QAction("Fit Timeline to View", self)
         
+        # Additional actions for shortcuts
+        self.actions['play_selected_segment'] = QAction(self.icons['play-line'], "Play Selected Segment", self)
+        self.actions['play_all_segments'] = QAction(self.icons['play-list-2-line'], "Play All Segments", self)
+        self.actions['refresh_thumbnails'] = QAction(self.icons['refresh-line'], "Refresh Thumbnails", self)
+        self.actions['help_about'] = QAction("Help & About", self)
+        
+        # Frame navigation actions
+        self.actions['prev_frame'] = QAction(self.icons['skip-back-line'], "Previous Frame", self)
+        self.actions['next_frame'] = QAction(self.icons['skip-forward-line'], "Next Frame", self)
+        self.actions['play_pause'] = QAction(self.icons['play-line'], "Play/Pause", self)
+        
         # --- Connect Actions to Handlers ---
         self.actions['open_video'].triggered.connect(self.handle_open_video)
         self.actions['open_project'].triggered.connect(self.handle_open_project)
@@ -758,16 +769,55 @@ class ProTrimmerWindow(QMainWindow):
         self.actions['zoom_in'].triggered.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() + 50))
         self.actions['zoom_out'].triggered.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.value() - 50))
         self.actions['zoom_fit'].triggered.connect(lambda: self.zoom_slider.setValue(self.zoom_slider.minimum()))
+        
+        # Connect additional actions
+        self.actions['play_selected_segment'].triggered.connect(self.play_selected_segment)
+        self.actions['play_all_segments'].triggered.connect(self.play_all_segments)
+        self.actions['save_snapshot_as'].triggered.connect(self.handle_save_snapshot_as)
+        self.actions['refresh_thumbnails'].triggered.connect(self.load_thumbnails)
+        self.actions['help_about'].triggered.connect(self.show_help_about)
+        
+        # Connect frame navigation actions
+        self.actions['prev_frame'].triggered.connect(self.prev_frame_action)
+        self.actions['next_frame'].triggered.connect(self.next_frame_action)
+        
+        # Connect play/pause action
+        self.actions['play_pause'].triggered.connect(lambda: self.player.cycle('pause'))
 
         # --- Set Shortcuts ---
+        # File Operations
         self.actions['open_video'].setShortcut(QKeySequence.Open)
         self.actions['save_project'].setShortcut(QKeySequence.Save)
         self.actions['undo'].setShortcut(QKeySequence.Undo)
         self.actions['redo'].setShortcut(QKeySequence.Redo)
+        self.actions['export_video'].setShortcut(QKeySequence("Ctrl+E"))
+        
+        # Segment Management
         self.actions['quick_snapshot'].setShortcut(QKeySequence("F12"))
         self.actions['mark_in'].setShortcut(QKeySequence("I"))
         self.actions['mark_out'].setShortcut(QKeySequence("O"))
         self.actions['delete_segment'].setShortcut(QKeySequence.Delete)
+        self.actions['merge_segments'].setShortcut(QKeySequence("M"))
+        
+        # View Operations
+        self.actions['zoom_in'].setShortcut(QKeySequence("Ctrl+Plus"))
+        self.actions['zoom_out'].setShortcut(QKeySequence("Ctrl+Minus"))
+        self.actions['zoom_fit'].setShortcut(QKeySequence("Ctrl+0"))
+        
+        # Additional shortcuts
+        self.actions['settings'].setShortcut(QKeySequence("Ctrl+,"))
+        self.actions['play_selected_segment'].setShortcut(QKeySequence("Enter"))
+        self.actions['play_all_segments'].setShortcut(QKeySequence("Ctrl+Enter"))
+        self.actions['save_snapshot_as'].setShortcut(QKeySequence("Ctrl+F12"))
+        self.actions['refresh_thumbnails'].setShortcut(QKeySequence("F5"))
+        self.actions['help_about'].setShortcut(QKeySequence("F1"))
+        
+        # Frame navigation shortcuts (comma and period)
+        self.actions['prev_frame'].setShortcut(QKeySequence(","))
+        self.actions['next_frame'].setShortcut(QKeySequence("."))
+        
+        # Play/Pause shortcut
+        self.actions['play_pause'].setShortcut(QKeySequence("Space"))
 
         # --- Build Toolbar ---
         self.toolbar = self.addToolBar("Main Toolbar")
@@ -781,7 +831,7 @@ class ProTrimmerWindow(QMainWindow):
         for key in ['mark_in', 'mark_out', 'merge_segments', 'delete_segment']: self.toolbar.addAction(self.actions[key])
         self.toolbar.addSeparator()
         # Tools Group
-        for key in ['quick_snapshot', 'settings']: self.toolbar.addAction(self.actions[key])
+        for key in ['quick_snapshot', 'save_snapshot_as', 'settings']: self.toolbar.addAction(self.actions[key])
         self.toolbar.addSeparator()
 
         # Set text labels for key actions
@@ -829,11 +879,16 @@ class ProTrimmerWindow(QMainWindow):
         segment_menu.addSeparator()
         segment_menu.addAction(self.actions['delete_segment'])
         segment_menu.addAction(self.actions['merge_segments'])
+        segment_menu.addSeparator()
+        segment_menu.addAction(self.actions['play_selected_segment'])
+        segment_menu.addAction(self.actions['play_all_segments'])
         # View Menu
         view_menu = menu_bar.addMenu("&View")
         view_menu.addAction(self.actions['zoom_in'])
         view_menu.addAction(self.actions['zoom_out'])
         view_menu.addAction(self.actions['zoom_fit'])
+        view_menu.addSeparator()
+        view_menu.addAction(self.actions['refresh_thumbnails'])
         # Playback Menu
         playback_menu = menu_bar.addMenu("&Playback")
         for key in self.connections:
@@ -841,6 +896,10 @@ class ProTrimmerWindow(QMainWindow):
                 self.actions[key] = QAction(self.icons.get(key+'-line'), key.replace('_', ' ').title(), self)
                 self.actions[key].triggered.connect(self.connections[key].click)
             playback_menu.addAction(self.actions[key])
+        
+        # Help Menu
+        help_menu = menu_bar.addMenu("&Help")
+        help_menu.addAction(self.actions['help_about'])
 
     def setup_player(self): self.player = mpv.MPV(wid=str(int(self.video_container.winId())), input_default_bindings=True, osc=False, log_handler=self.handle_mpv_log)
     
@@ -878,6 +937,10 @@ class ProTrimmerWindow(QMainWindow):
         self.thumbnails.mouseMoveEvent = lambda e: self.timeline_hover(e, self.thumbnails)
         
         self.timeline.wheelEvent = self.thumbnails.wheelEvent = self.timeline_wheel_event
+        
+        # Override keyPressEvent for timeline widgets to allow shortcuts to work
+        self.timeline.keyPressEvent = lambda e: self.timeline_key_press_event(e, self.timeline)
+        self.thumbnails.keyPressEvent = lambda e: self.timeline_key_press_event(e, self.thumbnails)
         self.zoom_slider.valueChanged.connect(self.redraw_timeline); self.zoom_in_btn.clicked.connect(self.actions['zoom_in'].trigger)
         self.zoom_out_btn.clicked.connect(self.actions['zoom_out'].trigger); self.zoom_fit_btn.clicked.connect(self.actions['zoom_fit'].trigger)
         self.undo_manager.undo_stack_changed.connect(self.actions['undo'].setEnabled); self.undo_manager.redo_stack_changed.connect(self.actions['redo'].setEnabled)
@@ -1006,6 +1069,9 @@ class ProTrimmerWindow(QMainWindow):
         self.player.loadfile(self.video_path)
         self.player.pause = True
         self.clear_in_out_points()
+        
+        # Setup keyboard shortcuts after video is loaded
+        self.setup_keyboard_shortcuts()
 
     def handle_open_video(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open Video File");
@@ -1493,17 +1559,34 @@ class ProTrimmerWindow(QMainWindow):
     def setup_tooltips(self):
         self.actions['open_video'].setToolTip("Open a new video file (Ctrl+O)")
         self.actions['save_project'].setToolTip("Save the current segments to a project file (Ctrl+S)")
-        self.actions['export_video'].setToolTip("Export the defined segments to video files")
-        self.actions['save_snapshot_as'].setToolTip("Save the current frame as an image with a dialog")
+        self.actions['export_video'].setToolTip("Export the defined segments to video files (Ctrl+E)")
+        self.actions['save_snapshot_as'].setToolTip("Save the current frame as an image with a dialog (Ctrl+F12)")
         self.actions['quick_snapshot'].setToolTip("Instantly save the current frame to the configured directory (F12)")
         self.actions['undo'].setToolTip("Undo last action (Ctrl+Z)")
         self.actions['redo'].setToolTip("Redo last undone action (Ctrl+Y)")
         self.actions['mark_in'].setToolTip("Mark In Point (I)")
         self.actions['mark_out'].setToolTip("Mark Out Point (O)")
         self.actions['delete_segment'].setToolTip("Delete Selected Segments (Del)")
+        self.actions['merge_segments'].setToolTip("Merge Selected Segments (M)")
+        self.actions['play_selected_segment'].setToolTip("Play Selected Segment (Enter)")
+        self.actions['play_all_segments'].setToolTip("Play All Segments (Ctrl+Enter)")
+        self.actions['zoom_in'].setToolTip("Zoom In (Ctrl+Plus)")
+        self.actions['zoom_out'].setToolTip("Zoom Out (Ctrl+Minus)")
+        self.actions['zoom_fit'].setToolTip("Fit Timeline to View (Ctrl+0)")
+        self.actions['refresh_thumbnails'].setToolTip("Refresh Thumbnails (F5)")
+        self.actions['settings'].setToolTip("Settings (Ctrl+,)")
+        self.actions['help_about'].setToolTip("Help & About (F1)")
         self.connections['prev_frame'].setToolTip("Go to Previous Frame (,)")
         self.connections['next_frame'].setToolTip("Go to Next Frame (.)")
         self.connections['play_pause'].setToolTip("Play/Pause (Space)")
+        self.connections['jump_start'].setToolTip("Jump to Start (Home)")
+        self.connections['jump_end'].setToolTip("Jump to End (End)")
+        self.connections['prev_boundary'].setToolTip("Previous Boundary (Ctrl+Left)")
+        self.connections['next_boundary'].setToolTip("Next Boundary (Ctrl+Right)")
+        
+        # Add tooltips for global navigation shortcuts
+        self.timeline.setToolTip("Timeline - Use arrow keys to navigate: Left/Right (5s), Up/Down (1min), Home/End (start/end)")
+        self.thumbnails.setToolTip("Thumbnails - Use arrow keys to navigate: Left/Right (5s), Up/Down (1min), Home/End (start/end)")
 
     def closeEvent(self, event):
         # Prompt to save if there are unsaved changes
@@ -1659,6 +1742,176 @@ class ProTrimmerWindow(QMainWindow):
             dirty_indicator = "*" if self.is_project_dirty else ""
             title = f"{Path(self.video_path).name}{dirty_indicator} - {title}"
         self.setWindowTitle(title)
+    
+    def show_help_about(self):
+        """Show help and about dialog with keyboard shortcuts."""
+        shortcuts_text = """
+<b>PowerTrim - Video Trimming Application</b><br><br>
+
+<b>Keyboard Shortcuts:</b><br><br>
+
+<b>File Operations:</b><br>
+• Ctrl+O - Open Video<br>
+• Ctrl+S - Save Project<br>
+• Ctrl+E - Export Video<br>
+• Ctrl+Q - Quit<br><br>
+
+<b>Playback Control:</b><br>
+• Space - Play/Pause<br>
+• Left/Right - Seek 5 seconds<br>
+• Up/Down - Seek 1 minute<br>
+• , - Previous frame<br>
+• . - Next frame<br>
+• Home - Jump to start<br>
+• End - Jump to end<br>
+• Ctrl+Left/Right - Previous/Next boundary<br><br>
+
+<b>Segment Management:</b><br>
+• I - Mark In Point<br>
+• O - Mark Out Point<br>
+• Delete - Delete selected segment<br>
+• M - Merge selected segments<br>
+• Enter - Play selected segment<br>
+• Ctrl+Enter - Play all segments<br><br>
+
+<b>Timeline Navigation:</b><br>
+• Ctrl+Plus - Zoom in<br>
+• Ctrl+Minus - Zoom out<br>
+• Ctrl+0 - Zoom fit<br>
+• Ctrl+Mouse Wheel - Zoom timeline<br><br>
+
+<b>Snapshots:</b><br>
+• F12 - Quick snapshot<br>
+• Ctrl+F12 - Save snapshot as<br><br>
+
+<b>Other:</b><br>
+• F1 - This help dialog<br>
+• F5 - Refresh thumbnails<br>
+• Ctrl+, - Settings<br><br>
+
+<b>Version:</b> 1.0<br>
+<b>Built with:</b> PySide6, python-mpv, FFmpeg, SmartCut
+        """
+        
+        QMessageBox.information(self, "Help & About - PowerTrim", shortcuts_text)
+    
+    def setup_keyboard_shortcuts(self):
+        """Setup additional keyboard shortcuts using QShortcut."""
+        # Clear existing shortcuts
+        if hasattr(self, 'shortcuts'):
+            for shortcut in self.shortcuts.values():
+                shortcut.deleteLater()
+        
+        if not self.video_path:
+            return
+            
+        # Arrow key navigation shortcuts
+        self.shortcuts = {}
+        
+        # Left/Right - Seek 5 seconds
+        self.shortcuts['seek_left'] = QShortcut(QKeySequence(Qt.Key_Left), self)
+        self.shortcuts['seek_left'].activated.connect(self.seek_5_seconds_backward)
+        
+        self.shortcuts['seek_right'] = QShortcut(QKeySequence(Qt.Key_Right), self)
+        self.shortcuts['seek_right'].activated.connect(self.seek_5_seconds_forward)
+        
+        # Up/Down - Seek 1 minute
+        self.shortcuts['seek_up'] = QShortcut(QKeySequence(Qt.Key_Up), self)
+        self.shortcuts['seek_up'].activated.connect(self.seek_1_minute_backward)
+        
+        self.shortcuts['seek_down'] = QShortcut(QKeySequence(Qt.Key_Down), self)
+        self.shortcuts['seek_down'].activated.connect(self.seek_1_minute_forward)
+        
+        # Home/End - Jump to start/end
+        self.shortcuts['jump_home'] = QShortcut(QKeySequence(Qt.Key_Home), self)
+        self.shortcuts['jump_home'].activated.connect(self.jump_to_start)
+        
+        self.shortcuts['jump_end'] = QShortcut(QKeySequence(Qt.Key_End), self)
+        self.shortcuts['jump_end'].activated.connect(self.jump_to_end)
+        
+        # Ctrl + Arrow keys for boundary navigation
+        self.shortcuts['prev_boundary'] = QShortcut(QKeySequence("Ctrl+Left"), self)
+        self.shortcuts['prev_boundary'].activated.connect(self.seek_to_prev_boundary)
+        
+        self.shortcuts['next_boundary'] = QShortcut(QKeySequence("Ctrl+Right"), self)
+        self.shortcuts['next_boundary'].activated.connect(self.seek_to_next_boundary)
+        
+        # Ctrl + Q to quit
+        self.shortcuts['quit'] = QShortcut(QKeySequence("Ctrl+Q"), self)
+        self.shortcuts['quit'].activated.connect(self.close)
+    
+    def seek_5_seconds_backward(self):
+        """Seek 5 seconds backward."""
+        if not self.video_path:
+            return
+        current_pos = self.player.time_pos or 0
+        new_pos = max(0, current_pos - 5)
+        self.player.time_pos = new_pos
+    
+    def seek_5_seconds_forward(self):
+        """Seek 5 seconds forward."""
+        if not self.video_path:
+            return
+        current_pos = self.player.time_pos or 0
+        new_pos = min(self.duration, current_pos + 5)
+        self.player.time_pos = new_pos
+    
+    def seek_1_minute_backward(self):
+        """Seek 1 minute backward."""
+        if not self.video_path:
+            return
+        current_pos = self.player.time_pos or 0
+        new_pos = max(0, current_pos - 60)
+        self.player.time_pos = new_pos
+    
+    def seek_1_minute_forward(self):
+        """Seek 1 minute forward."""
+        if not self.video_path:
+            return
+        current_pos = self.player.time_pos or 0
+        new_pos = min(self.duration, current_pos + 60)
+        self.player.time_pos = new_pos
+    
+    def jump_to_start(self):
+        """Jump to the start of the video."""
+        if not self.video_path:
+            return
+        self.player.time_pos = 0
+    
+    def jump_to_end(self):
+        """Jump to the end of the video."""
+        if not self.video_path:
+            return
+        self.player.time_pos = max(0, self.duration - 0.05)
+    
+    def prev_frame_action(self):
+        """Previous frame action."""
+        if not self.video_path:
+            return
+        self.player.command('frame-back-step')
+    
+    def next_frame_action(self):
+        """Next frame action."""
+        if not self.video_path:
+            return
+        self.player.command('frame-step')
+    
+    def timeline_key_press_event(self, event, view):
+        """Handle key press events in timeline widgets."""
+        # Let the main window handle navigation shortcuts
+        key = event.key()
+        modifiers = event.modifiers()
+        
+        # Check if this is one of our navigation shortcuts
+        if (modifiers == Qt.NoModifier and key in [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End]) or \
+           (modifiers == Qt.ControlModifier and key in [Qt.Key_Left, Qt.Key_Right]) or \
+           (modifiers == Qt.ControlModifier and key == Qt.Key_Q):
+            # Let the main window handle these shortcuts
+            event.ignore()
+            return
+        
+        # For other keys, let the default QGraphicsView behavior handle them
+        QGraphicsView.keyPressEvent(view, event)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
