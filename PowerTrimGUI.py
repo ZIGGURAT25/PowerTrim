@@ -27,7 +27,7 @@ from PySide6.QtGui import (
     QColor, QPen, QBrush, QKeySequence, QShortcut, QFont,
     QPixmap, QImage, QAction, QIcon, QActionGroup, QPolygonF, QCursor
 )
-from PySide6.QtCore import Qt, Signal, QObject, QThread, QTimer, QPointF, QSize, Slot, QSettings, QTime
+from PySide6.QtCore import Qt, Signal, QObject, QThread, QTimer, QPointF, QSize, Slot, QSettings, QTime, QEvent
 
 import mpv
 from icons import create_icon_from_svg, ICON_DATA
@@ -591,6 +591,7 @@ class ProTrimmerWindow(QMainWindow):
         self.setAcceptDrops(True)
         self.video_path, self.duration, self.fps, self.total_frames, self.current_frame = None, 0, 0, 0, 0
         self.in_point, self.out_point = -1, -1
+        self.is_seeking = False
         self.playhead = None
         self.thumb_loader_thread = None
         self.thumb_loader_worker = None
@@ -630,6 +631,12 @@ class ProTrimmerWindow(QMainWindow):
         self.setup_connections()
         self.set_player_controls_enabled(False)
         self.actions['mark_out'].setEnabled(False)
+
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
+            self.is_seeking = False
+            QApplication.instance().removeEventFilter(self)
+        return super().eventFilter(source, event)
 
     def setup_ui(self):
         self.central_widget = QWidget(); self.setCentralWidget(self.central_widget)
@@ -1403,7 +1410,9 @@ class ProTrimmerWindow(QMainWindow):
             x=(i*interval_s/self.duration)*width; self.timeline_scene.addLine(x,height-15,x,height,QPen(Qt.white))
             text=self.timeline_scene.addText(self.format_time(i*interval_s),QFont("Segoe UI",8)); text.setDefaultTextColor(Qt.white); text.setPos(x+2,height-35)
         self.redraw_playhead()
-    
+        if self.playhead:
+            self.timeline.ensureVisible(self.playhead)
+
     def draw_in_out_markers(self, width, height):
         x_in = (self.in_point / self.total_frames) * width
         end_frame = self.out_point if self.out_point > self.in_point else self.current_frame
@@ -1433,8 +1442,8 @@ class ProTrimmerWindow(QMainWindow):
             if self.duration>0:
                 pos = self.player.time_pos or 0; x = (pos/self.duration)*self.timeline_scene.width()
                 self.playhead = self.timeline_scene.addLine(x,0,x,self.timeline.height(),QPen(QColor("red"),2)); self.playhead.setZValue(12)
-                if self.timeline.horizontalScrollBar().isVisible():
-                    self.timeline.centerOn(self.playhead)
+                if not self.is_seeking:
+                    self.timeline.ensureVisible(self.playhead)
         except (mpv.ShutdownError, AttributeError):
             return
     
